@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.KeyVault;
+using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Host;
@@ -15,7 +17,7 @@ using Newtonsoft.Json.Linq;
 namespace Saf.Azure.Function
 {
     public static class GetQuotes
-    {
+    { 
         [FunctionName("GetQuotes")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)]HttpRequest req, TraceWriter log)
         {
@@ -42,7 +44,8 @@ namespace Saf.Azure.Function
                 // Call third party API for getting data
                 using (var httpClient = new HttpClient())
                 {
-                    var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey=1S0EIMAF3ORTOAIS";
+                    var apiKey = await GetSecret("saf-azure-fuction-getquotes-apikey", "saf-service-dev");
+                    var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={apiKey}";
                     var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, url);
                     var httpResponseMessage = await httpClient.SendAsync(httpRequestMessage);
                     if (httpResponseMessage.IsSuccessStatusCode)
@@ -83,6 +86,15 @@ namespace Saf.Azure.Function
             }
 
             return false;
+        }
+
+        private static async Task<string> GetSecret(string secretName, string keyVaultName)
+        {
+            // Use MSI to access key-vault
+            var tokenProvider = new AzureServiceTokenProvider(Environment.GetEnvironmentVariable("TokenProviderConnectionStirng"));
+            var keyVaultClient = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(tokenProvider.KeyVaultTokenCallback));
+            var secretBundle = await keyVaultClient.GetSecretAsync($"https://{keyVaultName}.vault.azure.net", secretName);
+            return secretBundle?.Value;
         }
     }
 }
