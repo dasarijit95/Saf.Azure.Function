@@ -1,5 +1,6 @@
 using System;
 using System.IdentityModel.Tokens.Jwt;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Host;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Saf.Azure.Function
@@ -15,15 +17,18 @@ namespace Saf.Azure.Function
     public static class GetQuotes
     {
         [FunctionName("GetQuotes")]
-        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = null)]HttpRequest req, TraceWriter log)
+        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)]HttpRequest req, TraceWriter log)
         {
-            string ticker = req.Query["name"];
+            // Read request body to get ticker
+            dynamic requestBody = JsonConvert.DeserializeObject(await new StreamReader(req.Body).ReadToEndAsync());
+            string ticker = requestBody?.ticker;
             string responseContent = string.Empty;
 
+            // Check bearer token
             var headerValue = req.Headers["Authorization"].ToString();
             if (String.IsNullOrWhiteSpace(headerValue))
             {
-                return new StatusCodeResult(403);
+                return new StatusCodeResult(401);
             }
 
             try
@@ -31,12 +36,13 @@ namespace Saf.Azure.Function
                 var bearerToken = headerValue.Split(' ')[1];
                 if (!ValidateTokenAsync(bearerToken))
                 {
-                    return new StatusCodeResult(403);
+                    return new StatusCodeResult(401);
                 }
 
+                // Call third party API for getting data
                 using (var httpClient = new HttpClient())
                 {
-                    var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=fb&apikey=1S0EIMAF3ORTOAIS";
+                    var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey=1S0EIMAF3ORTOAIS";
                     var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, url);
                     var httpResponseMessage = await httpClient.SendAsync(httpRequestMessage);
                     if (httpResponseMessage.IsSuccessStatusCode)
