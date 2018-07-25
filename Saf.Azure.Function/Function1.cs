@@ -58,6 +58,11 @@ namespace Saf.Azure.Function
                         var responseContent = await httpResponseMessage.Content.ReadAsStringAsync();
                         var api_data_1 = JObject.Parse(responseContent);
 
+                        if (api_data_1["Error Message"] != null)
+                        {
+                            return new StatusCodeResult(400);
+                        }
+
                         // Process returned data
                         result["open"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["1. open"];
                         result["high"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["2. high"];
