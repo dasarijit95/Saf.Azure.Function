@@ -3,6 +3,7 @@
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "AzureWebJobsDashboard": "UseDevelopmentStorage=true",
-    "TokenProviderConnectionStirng": "RunAs=Developer; DeveloperTool=AzureCLI"
+    "TokenProviderConnectionStirng": "RunAs=Developer; DeveloperTool=AzureCLI",
+    "Audiences": "4de0af9a-e121-4413-b8c4-fde3f2519ba0|f9f77388-e24e-42ec-a9da-66f84c1b9548"
   }
 }

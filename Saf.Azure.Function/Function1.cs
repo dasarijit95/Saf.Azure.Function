@@ -17,14 +17,13 @@ using Newtonsoft.Json.Linq;
 namespace Saf.Azure.Function
 {
     public static class GetQuotes
-    { 
+    {
         [FunctionName("GetQuotes")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)]HttpRequest req, TraceWriter log)
         {
             // Read request body to get ticker
             dynamic requestBody = JsonConvert.DeserializeObject(await new StreamReader(req.Body).ReadToEndAsync());
             string ticker = requestBody?.ticker;
-            string responseContent = string.Empty;
 
             // Check bearer token
             var headerValue = req.Headers["Authorization"].ToString();
@@ -33,10 +32,15 @@ namespace Saf.Azure.Function
                 return new StatusCodeResult(401);
             }
 
+            JObject result = new JObject
+            {
+                ["symbol"] = ticker
+            };
+
             try
             {
                 var bearerToken = headerValue.Split(' ')[1];
-                if (!ValidateTokenAsync(bearerToken))
+                if (!ValidateToken(bearerToken))
                 {
                     return new StatusCodeResult(401);
                 }
@@ -44,20 +48,36 @@ namespace Saf.Azure.Function
                 // Call third party API for getting data
                 using (var httpClient = new HttpClient())
                 {
+                    // Get api key from key-vault
                     var apiKey = await GetSecret("saf-azure-fuction-getquotes-apikey", "saf-service-dev");
                     var url = $"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={ticker}&apikey={apiKey}";
                     var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, url);
                     var httpResponseMessage = await httpClient.SendAsync(httpRequestMessage);
                     if (httpResponseMessage.IsSuccessStatusCode)
                     {
-                        responseContent = await httpResponseMessage.Content.ReadAsStringAsync();
-                        var response = JObject.Parse(responseContent);
+                        var responseContent = await httpResponseMessage.Content.ReadAsStringAsync();
+                        var api_data_1 = JObject.Parse(responseContent);
 
-                        // Extract today's data
-                        var data = response["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")];
-                        return new JsonResult(data);
+                        // Process returned data
+                        result["open"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["1. open"];
+                        result["high"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["2. high"];
+                        result["low"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["3. low"];
+                        result["close"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["4. close"];
+                        result["volume"] = api_data_1["Time Series (Daily)"][DateTime.Now.ToString("yyyy-MM-dd")]["5. volume"];
+
+                        // Call second API to get earnings data
+                        url = $"https://api.iextrading.com/1.0/stock/{ticker}/earnings";
+                        httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, url);
+                        httpResponseMessage = await httpClient.SendAsync(httpRequestMessage);
+                        if (httpResponseMessage.IsSuccessStatusCode)
+                        {
+                            responseContent = await httpResponseMessage.Content.ReadAsStringAsync();
+                            var api_data_2 = JObject.Parse(responseContent);
+                            result["earnings"] = api_data_2["earnings"];
+                        }   
                     }
                 }
+                return new JsonResult(result);
             }
             catch (Exception ex)
             {
@@ -67,9 +87,10 @@ namespace Saf.Azure.Function
             return new StatusCodeResult(500);
         }
 
-        private static bool ValidateTokenAsync(string accessToken)
+        private static bool ValidateToken(string accessToken)
         {
             DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var audiences = Environment.GetEnvironmentVariable("Audiences").Split('|');
             var handler = new JwtSecurityTokenHandler();
             if (!handler.CanReadToken(accessToken))
             {
@@ -80,7 +101,7 @@ namespace Saf.Azure.Function
             var audience = jwtToken.Claims.First(claim => claim.Type == "aud").Value;
             var expiry = epoch.AddSeconds(Convert.ToInt64(jwtToken.Claims.First(claim => claim.Type == "exp").Value));
 
-            if (audience.Equals("4de0af9a-e121-4413-b8c4-fde3f2519ba0") && expiry > DateTime.UtcNow)
+            if (audiences.Contains(audience) && expiry > DateTime.UtcNow)
             {
                 return true;
             }
