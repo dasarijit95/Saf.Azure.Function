@@ -1,4 +1,8 @@
 # Saf.Azure.Function
+
+
+### What does the Azure function do?
+
 This project demonstrates the use of Azure functions in the context of Support Actions, where a sample Azure function `GetQuotes` is set up to perform the following
 
 1. Verify the caller by checking the bearer token in the header
@@ -16,3 +20,8 @@ The function should be called using a POST request with a valid bearer token and
 }
 ```
 
+
+
+### How does it help Support Actions?
+
+For Support Actions, this means we can create webhooks to make HTTP calls to this function, pass in parameters and the **same** bearer token used by Support Actions Framework. And that would achieve calling multiple APIs, manipulating returned data, while using the same key-vault secret/certificates. Thus solving the problems with custom DLLs and webhook chaining.
